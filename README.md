@@ -1,4 +1,4 @@
-# Acoustic Report for White Sea Studios
+# Acoustic Report Engine
 
 Made in response to the White Sea Studios request in this video: https://www.youtube.com/watch?v=zbv2V86R_hE&t=70s
 
@@ -31,6 +31,8 @@ The engine also produces time–frequency visualizations to complement the numer
 
 - **Spectral Balance (Average EQ)** — frequency response plotted in dB/Hz vs logarithmic frequency (Hz), showing the long‑term tonal balance of the program material.
 - **Loudness Envelope (RMS over time)** — RMS loudness (dBFS) vs time (seconds), illustrating level stability, macro‑dynamics, and any large‑scale level changes across the song.
+  
+![Sample Output](ARE_SampleOutput.png)
 
 ## Intended Use
 
