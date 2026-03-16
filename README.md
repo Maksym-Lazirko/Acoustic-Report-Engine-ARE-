@@ -1,6 +1,6 @@
 # Acoustic Report Engine
 
-Made in response to the White Sea Studios request in this video: https://www.youtube.com/watch?v=zbv2V86R_hE&t=70s
+Made in response to the White Sea Studios request (7:30) in this video: https://www.youtube.com/watch?v=zbv2V86R_hE&t=70s
 
 ## Project Description
 
@@ -36,4 +36,4 @@ The engine also produces time–frequency visualizations to complement the numer
 
 ## Intended Use
 
-The ARE is designed as a neutral analysis tool for comparing mixes and masters, calibrating monitoring decisions, and documenting objective characteristics of commercial references or work‑in‑progress material in response to feedback such as that from White Sea Studios.
+The ARE is designed as a neutral analysis tool for comparing mixes and masters, calibrating monitoring decisions, and documenting objective characteristics of commercial references or work‑in‑progress material in response to feedback such as that from White Sea Studios. Free under MIT lisence.
