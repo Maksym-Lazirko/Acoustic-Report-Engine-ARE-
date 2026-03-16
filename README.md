@@ -1,7 +1,12 @@
-# Acoustic-Report-Engine-ARE-
-Automatic song averages - loudness, eq, dynamics, peak. 0 VU= -18 dBFS , ITU-R BS.1770-4
+# Acoustic Report for White Sea Studios
 
-## Sample Output
+Made in response to the White Sea Studios request in this video: https://www.youtube.com/watch?v=zbv2V86R_hE&t=70s
+
+## Project Description
+
+This repository contains an "Acoustic Report Engine" (ARE) that generates objective technical reports for audio tracks, focusing on average spectral balance, loudness, and dynamics. The tool is configured with a reference alignment of 0 VU = -18 dBFS and follows ITU-R BS.1770-4 loudness measurement standards.
+
+## Sample Technical Output
 
 ```
 =============================================
@@ -20,7 +25,13 @@ VU Maximum:            6.79 VU
 =============================================
 ```
 
-Graphical output includes:
-- **Spectral Balance (Average EQ)** — frequency response plotted in dB/Hz vs Hz
-- **Loudness Envelope (RMS over time)** — dBFS vs time (seconds)
+## Graphical Analysis
 
+The engine also produces time–frequency visualizations to complement the numeric report:
+
+- **Spectral Balance (Average EQ)** — frequency response plotted in dB/Hz vs logarithmic frequency (Hz), showing the long‑term tonal balance of the program material.
+- **Loudness Envelope (RMS over time)** — RMS loudness (dBFS) vs time (seconds), illustrating level stability, macro‑dynamics, and any large‑scale level changes across the song.
+
+## Intended Use
+
+The ARE is designed as a neutral analysis tool for comparing mixes and masters, calibrating monitoring decisions, and documenting objective characteristics of commercial references or work‑in‑progress material in response to feedback such as that from White Sea Studios.
