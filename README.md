@@ -1,6 +1,6 @@
 # Acoustic Report Engine
 
-Made in response to the White Sea Studios request (7:30) in this video: <iframe width="1840" height="1035" src="https://www.youtube.com/embed/zbv2V86R_hE" title="A YouTuber Made This Plugin… I Was Skeptical" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+Made in response to the White Sea Studios request in this video: https://youtu.be/zbv2V86R_hE?t=450
 
 ## Project Description
 
