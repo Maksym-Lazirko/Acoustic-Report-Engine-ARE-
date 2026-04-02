@@ -1,5 +1,6 @@
 # Acoustic Report Engine
 
+Tired of buffering an entire track to get it's measurements? 
 Made in response to the White Sea Studios request in this video: https://youtu.be/zbv2V86R_hE?t=450
 
 ## Project Description
