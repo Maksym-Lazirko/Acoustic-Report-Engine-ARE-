@@ -290,7 +290,10 @@ void AREPluginEditor::refreshUi()
 
     bannerLabel.setText (banner, juce::dontSendNotification);
 
-    if (audioProcessor.isAnalysisRunning())
+    const bool busy = audioProcessor.isAnalysisRunning();
+    analyzeButton.setEnabled (! busy);
+
+    if (busy)
         statusLabel.setText ("Analyzing...", juce::dontSendNotification);
     else if (cachedTimeline.valid || cachedReference.valid)
         statusLabel.setText ("Ready", juce::dontSendNotification);
