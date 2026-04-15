@@ -575,6 +575,9 @@ void ReferenceImportPanel::refreshFromEditor()
     else
         fileLabel.setText ("No file loaded", juce::dontSendNotification);
 
+    const bool busy = owner.getProcessor().isAnalysisRunning();
+    loadButton.setEnabled (! busy);
+    clearButton.setEnabled (! busy);
     revealButton.setEnabled (owner.cachedRefPath.isNotEmpty());
 }
 

@@ -277,93 +277,78 @@ bool AREPluginProcessor::copyTimelineAudioUnderLock (juce::ARAEditorView* editor
 
     areDbgLog ("H1", "copyTimeline", "audio_sources_found", (int) sources.size(), 0);
 
-    auto* audioSource = sources.front();
-    if (audioSource == nullptr)
+    // Calculate total length and validate stats across all sources
+    juce::int64 totalFrames = 0;
+    int maxChannels = 0;
+    double commonSampleRate = 0;
+
+    for (auto* source : sources)
     {
-        errorOut = "Audio source pointer is null.";
-        areDbgLog ("H1", "copyTimeline", "audio_source_null", 0, 0);
+        if (source == nullptr) continue;
+        juce::ARAAudioSourceReader reader (source);
+        if (! reader.isValid()) continue;
+
+        if (commonSampleRate == 0)
+            commonSampleRate = reader.sampleRate;
+        else if (std::abs (commonSampleRate - reader.sampleRate) > 0.01)
+        {
+            errorOut = "Mixed sample rates on timeline.";
+            return false;
+        }
+
+        totalFrames += reader.lengthInSamples;
+        maxChannels = juce::jmax (maxChannels, (int) reader.numChannels);
+    }
+
+    if (totalFrames <= 0 || commonSampleRate <= 1.0 || maxChannels <= 0)
+    {
+        errorOut = "Empty or invalid timeline.";
         return false;
     }
 
-    areDbgLog ("H1", "copyTimeline", "audio_source_valid", 0, 0);
+    const juce::int64 capByMem = are::kMaxAnalysisTotalFloats / (juce::int64) maxChannels;
+    const juce::int64 usableFrames = juce::jmin (totalFrames, capByMem);
+    const int numSamples = (int) usableFrames;
+
+    if (numSamples <= 0)
+    {
+        errorOut = "Timeline too large to load.";
+        return false;
+    }
 
     try
     {
-        juce::ARAAudioSourceReader reader (audioSource);
+        audioOut.setSize (maxChannels, numSamples, false, false, true);
+        audioOut.clear();
+        sampleRateOut = commonSampleRate;
 
-        if (! reader.isValid())
+        areDbgLog ("H1", "copyTimeline", "buffer_allocated", numSamples, maxChannels);
+
+        juce::int64 writePos = 0;
+        for (auto* source : sources)
         {
-            errorOut = "ARA audio reader is not valid.";
-            areDbgLog ("H1", "copyTimeline", "reader_invalid", 0, 0);
-            return false;
-        }
+            if (source == nullptr || writePos >= usableFrames) continue;
 
-        areDbgLog ("H1", "copyTimeline", "reader_valid", (int) reader.numChannels, (int) reader.sampleRate);
+            juce::ARAAudioSourceReader reader (source);
+            if (! reader.isValid()) continue;
 
-        const auto total = reader.lengthInSamples;
-        if (total <= 0)
-        {
-            errorOut = "Empty timeline.";
-            areDbgLog ("H1", "copyTimeline", "empty_timeline", (int) total, 0);
-            return false;
-        }
+            const juce::int64 framesToRead = juce::jmin (reader.lengthInSamples, usableFrames - writePos);
+            juce::int64 sourceReadPos = 0;
 
-        areDbgLog ("H1", "copyTimeline", "timeline_length", (int) total, (int) reader.sampleRate);
-
-        const auto maxFrames = (juce::int64) std::llround (900.0 * reader.sampleRate);
-        juce::int64 usable = juce::jmin (total, maxFrames);
-
-        const int ch = juce::jmax (1, (int) reader.numChannels);
-        const juce::int64 kMaxSamplesPerChannel =
-            (juce::int64) (std::numeric_limits<int>::max() / juce::jmax (1, ch));
-        usable = juce::jmin (usable, kMaxSamplesPerChannel);
-        usable = juce::jmin (usable, are::kMaxAnalysisTotalFloats / (juce::int64) ch);
-
-        sampleRateOut = reader.sampleRate;
-        const int numSamples = (int) usable;
-
-        if (numSamples <= 0)
-        {
-            errorOut = "Timeline too large to load.";
-            areDbgLog ("H1", "copyTimeline", "timeline_too_large", (int) usable, (int) maxFrames);
-            return false;
-        }
-
-        areDbgLog ("H1", "copyTimeline", "allocating_buffer", numSamples, ch);
-
-        try
-        {
-            audioOut.setSize (ch, numSamples, false, false, true);
-        }
-        catch (...)
-        {
-            errorOut = "Out of memory loading timeline.";
-            audioOut.setSize (0, 0, false, false, true);
-            areDbgLog ("H1", "copyTimeline", "buffer_alloc_failed", numSamples, ch);
-            return false;
-        }
-
-        areDbgLog ("H1", "copyTimeline", "buffer_allocated", numSamples, ch);
-
-        juce::int64 readPos = 0;
-        int readCount = 0;
-
-        while (readPos < usable)
-        {
-            const int n = (int) juce::jmin ((juce::int64) 65536, usable - readPos);
-            if (! reader.read (&audioOut, (int) readPos, n, readPos, true, true))
+            while (sourceReadPos < framesToRead)
             {
-                errorOut = "Failed while reading ARA audio.";
-                areDbgLog ("H1", "copyTimeline", "reader_read_failed", (int) readPos, n);
-                audioOut.setSize (0, 0, false, false, true);
-                return false;
+                const int n = (int) juce::jmin ((juce::int64) 65536, framesToRead - sourceReadPos);
+                if (! reader.read (&audioOut, (int) (writePos + sourceReadPos), n, sourceReadPos, true, true))
+                {
+                    errorOut = "Failed while reading ARA audio source.";
+                    return false;
+                }
+                sourceReadPos += n;
             }
-
-            readPos += n;
-            ++readCount;
+            writePos += framesToRead;
         }
 
-        areDbgLog ("H1", "copyTimeline", "read_complete", readCount, (int) readPos);
+        areDbgLog ("H1", "copyTimeline", "read_complete", (int) sources.size(), (int) writePos);
         return true;
     }
     catch (const std::exception&)
@@ -390,8 +375,8 @@ void AREPluginProcessor::beginAnalyzeAsync (juce::AudioBuffer<float> buffer,
 {
     juce::ignoreUnused (isTimeline);
 
-    if (timelineAnalysisFuture.has_value())
-        timelineAnalysisFuture->wait();
+    if (timelineAnalysisBusy.load())
+        return;
 
     timelineAnalysisBusy = true;
 
@@ -440,6 +425,12 @@ void AREPluginProcessor::beginTimelineAnalysis (juce::ARAEditorView* editorView)
 {
     areDbgLog ("H1", "beginTimeline", "entry", editorView != nullptr ? 1 : 0, isBoundToARA() ? 1 : 0);
 
+    if (timelineAnalysisBusy.load())
+    {
+        areDbgLog ("H1", "beginTimeline", "already_busy", 0, 0);
+        return;
+    }
+
     if (! isBoundToARA())
     {
         areDbgLog ("H1", "beginTimeline", "not_ara_mode", 0, 0);
@@ -464,8 +455,8 @@ void AREPluginProcessor::beginTimelineAnalysis (juce::ARAEditorView* editorView)
         return;
     }
 
-    // ARA mode
-    areDbgLog ("H1", "beginTimeline", "ara_mode_entry", editorView != nullptr ? 1 : 0, 0);
+    // ARA mode - launch fully async to avoid UI hang during reader.read
+    areDbgLog ("H1", "beginTimeline", "ara_mode_async_launch", editorView != nullptr ? 1 : 0, 0);
 
     if (editorView == nullptr)
     {
@@ -474,47 +465,77 @@ void AREPluginProcessor::beginTimelineAnalysis (juce::ARAEditorView* editorView)
         return;
     }
 
+    timelineAnalysisBusy = true;
+
     try
     {
-        juce::AudioBuffer<float> timelineAudio;
-        double sr = 0;
-        juce::String err;
+        timelineAnalysisFuture = std::async (std::launch::async,
+                                             [this, editorView]() mutable
+                                             {
+                                               struct ClearBusy
+                                               {
+                                                   std::atomic<bool>& b;
+                                                   ~ClearBusy() { b = false; }
+                                               } clearBusy { timelineAnalysisBusy };
 
-        areDbgLog ("H1", "beginTimeline", "calling_copyTimeline", 0, 0);
-        if (! copyTimelineAudioUnderLock (editorView, timelineAudio, sr, err))
-        {
-            areDbgLog ("H1", "beginTimeline", "copyTimeline_failed", 0, 0);
-            juce::ignoreUnused (err);
-            triggerAsyncUpdate();
-            return;
-        }
+                                               juce::AudioBuffer<float> timelineAudio;
+                                               double sr = 0;
+                                               juce::String err;
 
-        const int ns = timelineAudio.getNumSamples();
-        areDbgLog ("H1", "beginTimeline", "copyTimeline_success", ns, (int) sr);
-        beginAnalyzeAsync (std::move (timelineAudio), ns, sr, "Timeline", true);
-    }
-    catch (const std::exception&)
-    {
-        areDbgLog ("H1", "beginTimeline", "exception_caught", 0, 0);
-        triggerAsyncUpdate();
+                                               areDbgLog ("H1", "timelineWorker", "calling_copyTimeline", 0, 0);
+                                               if (! copyTimelineAudioUnderLock (editorView, timelineAudio, sr, err))
+                                               {
+                                                   areDbgLog ("H1", "timelineWorker", "copyTimeline_failed", 0, 0);
+                                                   triggerAsyncUpdate();
+                                                   return;
+                                               }
+
+                                               const int ns = timelineAudio.getNumSamples();
+                                               areDbgLog ("H1", "timelineWorker", "analysis_start", ns, (int) sr);
+
+                                               AnalysisSnapshot result;
+                                               try
+                                               {
+                                                   are::AnalysisEngine::sanitizePlanar (timelineAudio, ns);
+                                                   result = are::AnalysisEngine::analyzePlanar (timelineAudio, ns, sr, "Timeline");
+                                               }
+                                               catch (...)
+                                               {
+                                                   result = {};
+                                               }
+
+                                               {
+                                                   const juce::ScopedLock sl (dataLock);
+                                                   timelineSnapshot = result;
+                                               }
+
+                                               areDbgLog ("H1", "timelineWorker", "analysis_done", result.valid ? 1 : 0, ns);
+                                               triggerAsyncUpdate();
+                                             });
     }
     catch (...)
     {
-        areDbgLog ("H1", "beginTimeline", "unknown_exception", 0, 0);
-        triggerAsyncUpdate();
+        timelineAnalysisBusy = false;
+        areDbgLog ("H1", "beginTimeline", "async_launch_failed", 0, 0);
     }
 }
 
 void AREPluginProcessor::beginReferenceAnalysis (const juce::File& file)
 {
+    if (referenceAnalysisBusy.load())
+    {
+        areDbgLog ("H1", "beginRef", "already_busy", 0, 0);
+        return;
+    }
+
     if (! file.existsAsFile())
     {
         areDbgLog ("H1", "beginRef", "file_not_exists", 0, 0);
         return;
     }
 
-    juce::String filePath = file.getFullPathName();
-    juce::String fileName = file.getFileName();
+    const juce::String filePath = file.getFullPathName();
+    const juce::String fileName = file.getFileName();
 
     if (filePath.isEmpty() || fileName.isEmpty())
     {
@@ -522,56 +543,14 @@ void AREPluginProcessor::beginReferenceAnalysis (const juce::File& file)
         return;
     }
 
-    areDbgLog ("H1", "beginRef", "starting_ref_analysis", 0, 0);
+    areDbgLog ("H1", "beginRef", "starting_ref_analysis_async", 0, 0);
     referenceFilePath = filePath;
     referenceAnalysisBusy = true;
 
-    // Read audio into a buffer on THIS thread (main thread) BEFORE launching async
-    // This avoids the crash from reader accessing destroyed AudioFormatManager
-    juce::AudioFormatManager fm;
-    fm.registerBasicFormats();
-    areDbgLog ("H1", "beginRef", "formats_registered", 1, 0);
-
-    juce::AudioFormatReader* readerPtr = fm.createReaderFor (filePath);
-    if (readerPtr == nullptr)
-    {
-        areDbgLog ("H1", "beginRef", "reader_creation_failed", 0, 0);
-        referenceAnalysisBusy = false;
-        return;
-    }
-
-    areDbgLog ("H1", "beginRef", "reader_created", 1, (int) readerPtr->numChannels);
-
-    // Load the entire audio file into memory while reader is valid
-    std::unique_ptr<juce::AudioFormatReader> reader (readerPtr);
-    const int numChannels = reader->numChannels;
-    const int numFrames = (int) reader->lengthInSamples;
-    const double sampleRate = reader->sampleRate;
-
-    if (numFrames <= 0)
-    {
-        areDbgLog ("H1", "beginRef", "invalid_num_frames", numFrames, 0);
-        referenceAnalysisBusy = false;
-        return;
-    }
-
-    juce::AudioBuffer<float> fileBuffer (numChannels, numFrames);
-    const int readSamples = reader->read (&fileBuffer, 0, numFrames, 0, true, true);
-    areDbgLog ("H1", "beginRef", "file_read_complete", readSamples, numChannels);
-
-    if (readSamples != numFrames)
-    {
-        areDbgLog ("H1", "beginRef", "incomplete_read", readSamples, numFrames);
-    }
-
-    // Reader is no longer needed, it will be destroyed along with fm
-    reader.reset();
-
-    // Now launch async analysis with the loaded audio buffer
     try
     {
         referenceAnalysisFuture = std::async (std::launch::async,
-                                              [this, fileBuffer = std::move(fileBuffer), numFrames, fileName, sampleRate]() mutable
+                                              [this, file, fileName]() mutable
                                               {
                                                 struct ClearBusy
                                                 {
@@ -583,18 +562,59 @@ void AREPluginProcessor::beginReferenceAnalysis (const juce::File& file)
 
                                                 try
                                                 {
-                                                    areDbgLog ("H1", "refWorker", "analysis_start", fileBuffer.getNumChannels(), numFrames);
+                                                    juce::AudioFormatManager fm;
+                                                    fm.registerBasicFormats();
+
+                                                    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (file));
+                                                    if (reader == nullptr)
+                                                    {
+                                                        areDbgLog ("H1", "refWorker", "reader_creation_failed", 0, 0);
+                                                        return;
+                                                    }
+
+                                                    const int numChannels = reader->numChannels;
+                                                    const double sampleRate = reader->sampleRate;
+                                                    const juce::int64 totalFrames = reader->lengthInSamples;
+
+                                                    if (totalFrames <= 0 || numChannels <= 0)
+                                                    {
+                                                        areDbgLog ("H1", "refWorker", "invalid_source_stats", numChannels, (int) totalFrames);
+                                                        return;
+                                                    }
+
+                                                    const juce::int64 capByMem = are::kMaxAnalysisTotalFloats / (juce::int64) numChannels;
+                                                    const int numFrames = (int) juce::jmin (totalFrames, capByMem);
+
+                                                    if (numFrames <= 0)
+                                                    {
+                                                        areDbgLog ("H1", "refWorker", "numFrames_zero_after_cap", 0, 0);
+                                                        return;
+                                                    }
+
+                                                    juce::AudioBuffer<float> fileBuffer (numChannels, numFrames);
+                                                    if (! reader->read (&fileBuffer, 0, numFrames, 0, true, true))
+                                                    {
+                                                        areDbgLog ("H1", "refWorker", "read_failed", 0, 0);
+                                                        return;
+                                                    }
+
+                                                    areDbgLog ("H1", "refWorker", "analysis_start", numChannels, numFrames);
                                                     snap = are::AnalysisEngine::analyzePlanar (fileBuffer, numFrames, sampleRate, fileName);
                                                     areDbgLog ("H1", "refWorker", "analysis_done", snap.valid ? 1 : 0, (int) snap.numFrames);
                                                 }
+                                                catch (const std::bad_alloc&)
+                                                {
+                                                    areDbgLog ("H1", "refWorker", "bad_alloc", 0, 0);
+                                                    snap = {};
+                                                }
                                                 catch (const std::exception&)
                                                 {
-                                                    areDbgLog ("H1", "refWorker", "analysis_exception", 0, 0);
+                                                    areDbgLog ("H1", "refWorker", "exception", 0, 0);
                                                     snap = {};
                                                 }
                                                 catch (...)
                                                 {
-                                                    areDbgLog ("H1", "refWorker", "analysis_unknown_exception", 0, 0);
+                                                    areDbgLog ("H1", "refWorker", "unknown_exception", 0, 0);
                                                     snap = {};
                                                 }
 
@@ -603,21 +623,13 @@ void AREPluginProcessor::beginReferenceAnalysis (const juce::File& file)
                                                     referenceSnapshot = snap;
                                                 }
 
-                                                areDbgLog ("H2", "refWorker", "update_ui", snap.valid ? 1 : 0,
-                                                           (int) juce::jmin ((juce::int64) 2000000000, snap.numFrames));
-
                                                 triggerAsyncUpdate();
                                               });
     }
-    catch (const std::exception&)
-    {
-        areDbgLog ("H1", "beginRef", "async_exception", 0, 0);
-        referenceAnalysisBusy = false;
-    }
     catch (...)
     {
-        areDbgLog ("H1", "beginRef", "async_unknown_exception", 0, 0);
         referenceAnalysisBusy = false;
+        areDbgLog ("H1", "beginRef", "async_launch_failed", 0, 0);
     }
 }
 
