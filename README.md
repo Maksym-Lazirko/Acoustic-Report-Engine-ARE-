@@ -2,7 +2,7 @@
 
 Tired of buffering an entire track to get it's measurements? 
 Made in response to the White Sea Studios request in this video: https://youtu.be/zbv2V86R_hE?t=450
-
+![Plugin](ARE_DAW.png)
 ## Project Description
 
 This repository contains an "Acoustic Report Engine" (ARE) that generates objective technical reports for audio tracks, focusing on average spectral balance, loudness, and dynamics. The tool is configured with a reference alignment of 0 VU = -18 dBFS and follows ITU-R BS.1770-4 loudness measurement standards.
