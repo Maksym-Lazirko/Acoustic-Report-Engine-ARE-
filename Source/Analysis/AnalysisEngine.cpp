@@ -153,7 +153,11 @@ void AnalysisEngine::decimateWaveformPeaks (const std::vector<float>& mono,
         const int i1 = (b + 1) * numSamples / waveformBuckets;
         float pk = 0.0f;
         for (int i = i0; i < i1 && i < numSamples; ++i)
+        {
+            if ((size_t) i >= mono.size())
+                break;
             pk = juce::jmax (pk, std::abs (mono[(size_t) i]));
+        }
 
         peaksOut[(size_t) b] = juce::jlimit (0.0f, 1.0f, pk);
     }
@@ -260,7 +264,17 @@ void AnalysisEngine::measureWelchSpectrum (const std::vector<float>& mono,
     {
         ++segCount;
         for (int i = 0; i < nperseg; ++i)
-            fftData[(size_t) i] = mono[(size_t) (start + i)] * window[(size_t) i];
+        {
+            const int idx = start + i;
+            if ((size_t) idx >= mono.size())
+            {
+                fftData[(size_t) i] = 0.0f;
+            }
+            else
+            {
+                fftData[(size_t) i] = mono[(size_t) idx] * window[(size_t) i];
+            }
+        }
 
         for (int i = nperseg; i < 2 * fft.getSize(); ++i)
             fftData[(size_t) i] = 0.f;
@@ -336,7 +350,10 @@ void AnalysisEngine::measureRmsEnvelope (const std::vector<float>& mono,
         double sumSq = 0;
         for (int k = 0; k < hop; ++k)
         {
-            const float v = mono[(size_t) (i * hop + k)];
+            const size_t idx = (size_t) (i * hop + k);
+            if (idx >= mono.size())
+                break;
+            const float v = mono[idx];
             sumSq += (double) v * (double) v;
         }
 
