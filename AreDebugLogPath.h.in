@@ -1,2 +1,0 @@
-#pragma once
-#define ARE_DBG_LOG_FILE_PATH "@ARE_DEBUG_LOG_ESC@"
